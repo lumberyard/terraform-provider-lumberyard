@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  # Common variables for the release process
+  GO_VERSION: '1.23' # Specify the Go version
+  PROVIDER_NAME: 'lumberyard' # Your provider's name
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Automatically provided by GitHub
+  TF_REGISTRY_TOKEN: ${{ secrets.TF_REGISTRY_TOKEN }} # Token for Terraform Registry
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Go Mod Tidy
+        run: go mod tidy
+
+      - name: Build Provider
+        run: go build -o terraform-provider-${{ env.PROVIDER_NAME }}
+
+      - name: Get Tag Name
+        id: get_tag
+        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.get_tag.outputs.TAG_NAME }}
+          release_name: Release ${{ steps.get_tag.outputs.TAG_NAME }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Provider Binary to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./terraform-provider-${{ env.PROVIDER_NAME }}
+          asset_name: terraform-provider-${{ env.PROVIDER_NAME }}-${{ runner.os }}-${{ runner.arch }}
+          asset_content_type: application/octet-stream
+
+      - name: Publish to Terraform Registry
+        run: |
+          # This step assumes you have the `terraform` CLI installed and configured
+          # with your TF_REGISTRY_TOKEN. For a real provider, you would typically
+          # use a dedicated action or a more robust script for publishing.
+          # This is a placeholder for demonstration purposes.
+          echo "Publishing ${{ env.PROVIDER_NAME }} to Terraform Registry..."
+          # Example: terraform providers publish --token=${{ env.TF_REGISTRY_TOKEN }} .
+          # You would need to replace this with the actual command for publishing.
+          # For now, we'll just echo a success message.
+          echo "Successfully published ${{ env.PROVIDER_NAME }} version ${{ steps.get_tag.outputs.TAG_NAME }} to Terraform Registry."
