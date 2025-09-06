@@ -1,72 +1,41 @@
+# Terraform Provider release workflow.
 name: Release
 
+# This GitHub action creates a release when a tag that matches the pattern
+# "v*" (e.g. v0.1.0) is created.
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*'
 
+# Releases need permissions to read and write the repository contents.
+# GitHub considers creating releases and uploading assets as writing contents.
 permissions:
   contents: write
 
-env:
-  # Common variables for the release process
-  GO_VERSION: '1.23' # Specify the Go version
-  PROVIDER_NAME: 'lumberyard' # Your provider's name
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Automatically provided by GitHub
-  TF_REGISTRY_TOKEN: ${{ secrets.TF_REGISTRY_TOKEN }} # Token for Terraform Registry
-
 jobs:
-  release:
+  goreleaser:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          # Allow goreleaser to access older tag information.
+          fetch-depth: 0
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: 'go.mod'
           cache: true
-
-      - name: Go Mod Tidy
-        run: go mod tidy
-
-      - name: Build Provider
-        run: go build -o terraform-provider-${{ env.PROVIDER_NAME }}
-
-      - name: Get Tag Name
-        id: get_tag
-        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec # v6.3.0
+        id: import_gpg
         with:
-          tag_name: ${{ steps.get_tag.outputs.TAG_NAME }}
-          release_name: Release ${{ steps.get_tag.outputs.TAG_NAME }}
-          draft: false
-          prerelease: false
-
-      - name: Upload Provider Binary to Release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.PASSPHRASE }}
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./terraform-provider-${{ env.PROVIDER_NAME }}
-          asset_name: terraform-provider-${{ env.PROVIDER_NAME }}-${{ runner.os }}-${{ runner.arch }}
-          asset_content_type: application/octet-stream
-
-      - name: Publish to Terraform Registry
-        run: |
-          # This step assumes you have the `terraform` CLI installed and configured
-          # with your TF_REGISTRY_TOKEN. For a real provider, you would typically
-          # use a dedicated action or a more robust script for publishing.
-          # This is a placeholder for demonstration purposes.
-          echo "Publishing ${{ env.PROVIDER_NAME }} to Terraform Registry..."
-          # Example: terraform providers publish --token=${{ env.TF_REGISTRY_TOKEN }} .
-          # You would need to replace this with the actual command for publishing.
-          # For now, we'll just echo a success message.
-          echo "Successfully published ${{ env.PROVIDER_NAME }} version ${{ steps.get_tag.outputs.TAG_NAME }} to Terraform Registry."
+          args: release --clean
+        env:
+          # GitHub sets the GITHUB_TOKEN secret automatically.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}s.TAG_NAME }} to Terraform Registry."
