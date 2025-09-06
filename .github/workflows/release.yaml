@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*.*.*'
 
+permissions:
+  contents: write
+
 env:
   # Common variables for the release process
   GO_VERSION: '1.23' # Specify the Go version
