@@ -1,0 +1,51 @@
+# .goreleaser.yml
+version: 2
+project_name: terraform-provider-lumberyard
+builds:
+  - id: terraform-provider-lumberyard
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    goarm:
+      - "7"
+    gomips:
+      - hardfloat
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}}
+    binary: '{{ .ProjectName }}_v{{ .Version }}'
+archives:
+  - id: terraform-provider-lumberyard
+    format: zip
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+checksum:
+  name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
+  algorithm: sha256
+signs:
+  - cmd: gpg
+    args:
+      - --output
+      - ${signature}
+      - --detach-sign
+      - ${artifact}
+    signature: "${artifact}.sig"
+    artifacts: checksum
+release:
+  # If you want to manually draft releases, uncomment the following line:
+  # draft: true
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+changelog:
+  sort: asc
+  filters:
+    first_pull_request: true
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - 'Merge pull request'
+      - 'Merge branch'
