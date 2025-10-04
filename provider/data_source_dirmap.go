@@ -30,9 +30,9 @@ type dirmapDataSource struct{}
 
 // dirmapDataSourceModel maps the data source schema data.
 type dirmapDataSourceModel struct {
-	Path   types.String      `tfsdk:"path"`
-	Filter types.String      `tfsdk:"filter"`
-	Result types.Map         `tfsdk:"result"`
+	Path   types.String  `tfsdk:"path"`
+	Filter types.String  `tfsdk:"filter"`
+	Result types.Dynamic `tfsdk:"result"`
 }
 
 // Metadata returns the data source type name.
@@ -53,10 +53,9 @@ func (d *dirmapDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 				Description: "A glob pattern to filter files.",
 				Optional:    true,
 			},
-			"result": schema.MapAttribute{
+			"result": schema.DynamicAttribute{
 				Description: "The constructed object from the directory structure.",
 				Computed:    true,
-				ElementType: types.DynamicType,
 			},
 		},
 	}
@@ -98,20 +97,15 @@ func (d *dirmapDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	resultMap, diags := types.MapValueFrom(ctx, types.DynamicType, resultAttr)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	state.Result = resultMap
+	resultDynamic := types.DynamicValue(resultAttr)
+	state.Result = resultDynamic
 
 	// Set state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-// convertToAttrValue recursively converts interface{} to attr.Value for use with DynamicType.
-func convertToAttrValue(ctx context.Context, v interface{}) (map[string]attr.Value, diag.Diagnostics) {
+// convertToAttrValueSingle handles individual value conversion recursively.
+func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	switch t := v.(type) {
@@ -124,27 +118,6 @@ func convertToAttrValue(ctx context.Context, v interface{}) (map[string]attr.Val
 				return nil, diags
 			}
 			elements[key] = elemVal
-		}
-		return elements, diags
-	default:
-		diags.AddError(
-			"Invalid top-level type",
-			fmt.Sprintf("Expected map[string]interface{} at top level, got %T", v),
-		)
-		return nil, diags
-	}
-}
-
-// convertToAttrValueSingle handles individual value conversion recursively.
-func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
-	switch t := v.(type) {
-	case map[string]interface{}:
-		elements, d := convertToAttrValue(ctx, t)
-		diags.Append(d...)
-		if diags.HasError() {
-			return nil, diags
 		}
 		return types.MapValueMust(types.DynamicType, elements), diags
 	case []interface{}:
@@ -170,6 +143,22 @@ func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, d
 		diags.AddError(
 			"Unsupported value type",
 			fmt.Sprintf("Cannot convert type %T to attr.Value", v),
+		)
+		return nil, diags
+	}
+}
+
+// convertToAttrValue converts the top-level interface{} to attr.Value.
+func convertToAttrValue(ctx context.Context, v interface{}) (attr.Value, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	switch t := v.(type) {
+	case map[string]interface{}:
+		return convertToAttrValueSingle(ctx, t)
+	default:
+		diags.AddError(
+			"Invalid top-level type",
+			fmt.Sprintf("Expected map[string]interface{} at top level, got %T", v),
 		)
 		return nil, diags
 	}
