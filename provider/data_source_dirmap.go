@@ -61,14 +61,30 @@ func (d *dirmapDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	var state dirmapDataSourceModel
 
 	// Read Terraform configuration data into the model
-	req.Config.Get(ctx, &state)
+	diags := req.Config.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	result, _ := buildMap(state.Path.ValueString(), state.Filter.ValueString())
+	result, err := buildMap(state.Path.ValueString(), state.Filter.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Unable to build map",
+			"An unexpected error occurred when building the map: "+err.Error(),
+		)
+		return
+	}
 
-	resultMap, _ := types.MapValueFrom(ctx, types.MapType{ElemType: types.DynamicType}, result)
+	resultMap, diags := types.MapValueFrom(ctx, types.MapType{ElemType: types.DynamicType}, result)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	state.Result = types.DynamicValue(resultMap)
 
 	// Set state
-	resp.State.Set(ctx, &state)
+	diags = resp.State.Set(ctx, &state)
+	resp.Diagnostics.Append(diags...)
 }
