@@ -4,10 +4,15 @@ package provider
 
 import (
 	"context"
+	"fmt"
+	"math/big"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Ensure the implementation satisfies the expected interfaces.
@@ -25,9 +30,9 @@ type dirmapDataSource struct{}
 
 // dirmapDataSourceModel maps the data source schema data.
 type dirmapDataSourceModel struct {
-	Path   types.String  `tfsdk:"path"`
-	Filter types.String  `tfsdk:"filter"`
-	Result types.Dynamic `tfsdk:"result"`
+	Path   types.String      `tfsdk:"path"`
+	Filter types.String      `tfsdk:"filter"`
+	Result types.Map         `tfsdk:"result"`
 }
 
 // Metadata returns the data source type name.
@@ -48,9 +53,10 @@ func (d *dirmapDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 				Description: "A glob pattern to filter files.",
 				Optional:    true,
 			},
-			"result": schema.DynamicAttribute{
+			"result": schema.MapAttribute{
 				Description: "The constructed object from the directory structure.",
 				Computed:    true,
+				ElementType: types.DynamicType,
 			},
 		},
 	}
@@ -61,30 +67,110 @@ func (d *dirmapDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	var state dirmapDataSourceModel
 
 	// Read Terraform configuration data into the model
-	diags := req.Config.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	result, err := buildMap(state.Path.ValueString(), state.Filter.ValueString())
+	path := state.Path.ValueString()
+	var filter string
+	if !state.Filter.IsNull() && !state.Filter.IsUnknown() {
+		filter = state.Filter.ValueString()
+	}
+
+	result, err := buildMap(path, filter)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to build map",
-			"An unexpected error occurred when building the map: "+err.Error(),
+			fmt.Sprintf("Failed to build map from directory %s: %v", path, err),
 		)
 		return
 	}
 
-	resultMap, diags := types.MapValueFrom(ctx, types.MapType{ElemType: types.DynamicType}, result)
+	tflog.Debug(ctx, "Parsed directory structure", map[string]interface{}{
+		"path":   path,
+		"result": result,
+	})
+
+	resultAttr, diags := convertToAttrValue(ctx, result)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	state.Result = types.DynamicValue(resultMap)
+	resultMap, diags := types.MapValueFrom(ctx, types.DynamicType, resultAttr)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	state.Result = resultMap
 
 	// Set state
-	diags = resp.State.Set(ctx, &state)
-	resp.Diagnostics.Append(diags...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// convertToAttrValue recursively converts interface{} to attr.Value for use with DynamicType.
+func convertToAttrValue(ctx context.Context, v interface{}) (map[string]attr.Value, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	switch t := v.(type) {
+	case map[string]interface{}:
+		elements := make(map[string]attr.Value)
+		for key, val := range t {
+			elemVal, d := convertToAttrValueSingle(ctx, val)
+			diags.Append(d...)
+			if diags.HasError() {
+				return nil, diags
+			}
+			elements[key] = elemVal
+		}
+		return elements, diags
+	default:
+		diags.AddError(
+			"Invalid top-level type",
+			fmt.Sprintf("Expected map[string]interface{} at top level, got %T", v),
+		)
+		return nil, diags
+	}
+}
+
+// convertToAttrValueSingle handles individual value conversion recursively.
+func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	switch t := v.(type) {
+	case map[string]interface{}:
+		elements, d := convertToAttrValue(ctx, t)
+		diags.Append(d...)
+		if diags.HasError() {
+			return nil, diags
+		}
+		return types.MapValueMust(types.DynamicType, elements), diags
+	case []interface{}:
+		elements := make([]attr.Value, len(t))
+		for i, val := range t {
+			elemVal, d := convertToAttrValueSingle(ctx, val)
+			diags.Append(d...)
+			if diags.HasError() {
+				return nil, diags
+			}
+			elements[i] = elemVal
+		}
+		return types.ListValueMust(types.DynamicType, elements), diags
+	case string:
+		return types.StringValue(t), diags
+	case float64:
+		return types.NumberValue(big.NewFloat(t)), diags
+	case bool:
+		return types.BoolValue(t), diags
+	case nil:
+		return types.DynamicNull(), diags
+	default:
+		diags.AddError(
+			"Unsupported value type",
+			fmt.Sprintf("Cannot convert type %T to attr.Value", v),
+		)
+		return nil, diags
+	}
 }
