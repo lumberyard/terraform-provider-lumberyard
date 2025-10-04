@@ -26,9 +26,9 @@ type dirmapDataSource struct{}
 
 // dirmapDataSourceModel maps the data source schema data.
 type dirmapDataSourceModel struct {
-	Path   types.String  `tfsdk:"path"`
-	Filter types.String  `tfsdk:"filter"`
-	Result types.Dynamic `tfsdk:"result"`
+	Path   types.String `tfsdk:"path"`
+	Filter types.String `tfsdk:"filter"`
+	Result types.Map   `tfsdk:"result"`
 }
 
 // Metadata returns the data source type name.
@@ -49,8 +49,9 @@ func (d *dirmapDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 				Description: "A glob pattern to filter files.",
 				Optional:    true,
 			},
-			"result": schema.DynamicAttribute{
+			"result": schema.MapAttribute{
 				Description: "The constructed object from the directory structure.",
+				ElementType: types.DynamicType,
 				Computed:    true,
 			},
 		},
@@ -83,7 +84,7 @@ func (d *dirmapDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	state.Result = types.DynamicValue(resultMap)
+	state.Result = resultMap
 
 	// Set state
 	diags = resp.State.Set(ctx, &state)
