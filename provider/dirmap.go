@@ -13,6 +13,22 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+func convertKeysToStrings(i interface{}) interface{} {
+	switch x := i.(type) {
+	case map[interface{}]interface{}:
+		m2 := map[string]interface{}{}
+		for k, v := range x {
+			m2[fmt.Sprint(k)] = convertKeysToStrings(v)
+		}
+		return m2
+	case []interface{}:
+		for i, v := range x {
+			x[i] = convertKeysToStrings(v)
+		}
+	}
+	return i
+}
+
 func buildMap(basePath string, filter string) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
 
@@ -63,6 +79,8 @@ func buildMap(basePath string, filter string) (map[string]interface{}, error) {
 			if err != nil {
 				return fmt.Errorf("failed to parse %s: %w", path, err)
 			}
+
+			data = convertKeysToStrings(data)
 
 			relPath, err := filepath.Rel(basePath, path)
 			if err != nil {
