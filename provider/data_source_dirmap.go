@@ -7,7 +7,6 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -26,9 +25,9 @@ type dirmapDataSource struct{}
 
 // dirmapDataSourceModel maps the data source schema data.
 type dirmapDataSourceModel struct {
-	Path   types.String `tfsdk:"path"`
-	Filter types.String `tfsdk:"filter"`
-	Result types.Map   `tfsdk:"result"`
+	Path   types.String  `tfsdk:"path"`
+	Filter types.String  `tfsdk:"filter"`
+	Result types.Dynamic `tfsdk:"result"`
 }
 
 // Metadata returns the data source type name.
@@ -49,9 +48,8 @@ func (d *dirmapDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 				Description: "A glob pattern to filter files.",
 				Optional:    true,
 			},
-			"result": schema.MapAttribute{
+			"result": schema.DynamicAttribute{
 				Description: "The constructed object from the directory structure.",
-				ElementType: types.DynamicType,
 				Computed:    true,
 			},
 		},
@@ -63,30 +61,14 @@ func (d *dirmapDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	var state dirmapDataSourceModel
 
 	// Read Terraform configuration data into the model
-	diags := req.Config.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+	req.Config.Get(ctx, &state)
 
-	result, err := buildMap(state.Path.ValueString(), state.Filter.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to build map",
-			"An unexpected error occurred when building the map: "+err.Error(),
-		)
-		return
-	}
+	result, _ := buildMap(state.Path.ValueString(), state.Filter.ValueString())
 
-	resultMap, diags := types.MapValueFrom(ctx, types.MapType{ElemType: types.DynamicType}, result)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+	resultMap, _ := types.MapValueFrom(ctx, types.MapType{ElemType: types.DynamicType}, result)
 
-	state.Result = resultMap
+	state.Result = types.DynamicValue(resultMap)
 
 	// Set state
-	diags = resp.State.Set(ctx, &state)
-	resp.Diagnostics.Append(diags...)
+	resp.State.Set(ctx, &state)
 }
