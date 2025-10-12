@@ -4,13 +4,11 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"math/big"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -30,9 +28,9 @@ type dirmapDataSource struct{}
 
 // dirmapDataSourceModel maps the data source schema data.
 type dirmapDataSourceModel struct {
-	Path   types.String  `tfsdk:"path"`
-	Filter types.String  `tfsdk:"filter"`
-	Result types.Dynamic `tfsdk:"result"`
+	Path   types.String `tfsdk:"path"`
+	Filter types.String `tfsdk:"filter"`
+	Result types.String `tfsdk:"result"`
 }
 
 // Metadata returns the data source type name.
@@ -43,7 +41,7 @@ func (d *dirmapDataSource) Metadata(_ context.Context, req datasource.MetadataRe
 // Schema defines the schema for the data source.
 func (d *dirmapDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Traverses a nested directory of YAML and JSON files and constructs a nested object.",
+		Description: "Traverses a nested directory of YAML and JSON files and constructs a nested object, returned as a JSON string.",
 		Attributes: map[string]schema.Attribute{
 			"path": schema.StringAttribute{
 				Description: "The base directory to traverse.",
@@ -53,8 +51,8 @@ func (d *dirmapDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 				Description: "A glob pattern to filter files.",
 				Optional:    true,
 			},
-			"result": schema.DynamicAttribute{
-				Description: "The constructed object from the directory structure.",
+			"result": schema.StringAttribute{
+				Description: "The constructed object from the directory structure, as a JSON string.",
 				Computed:    true,
 			},
 		},
@@ -91,140 +89,18 @@ func (d *dirmapDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		"result": result,
 	})
 
-	resultAttr, diags := convertToAttrValue(ctx, result)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
+	// Marshal the result to a JSON string
+	jsonResult, err := json.Marshal(result)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to marshal result to JSON",
+			err.Error(),
+		)
 		return
 	}
 
-	resultDynamic := types.DynamicValue(resultAttr)
-	state.Result = resultDynamic
+	state.Result = types.StringValue(string(jsonResult))
 
 	// Set state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
-}
-
-// convertToAttrValueSingle handles individual value conversion recursively.
-func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
-	switch t := v.(type) {
-	case map[string]interface{}:
-		elements := make(map[string]attr.Value)
-		attrTypes := make(map[string]attr.Type)
-		for key, val := range t {
-			elemVal, d := convertToAttrValueSingle(ctx, val)
-			diags.Append(d...)
-			if diags.HasError() {
-				return nil, diags
-			}
-			elements[key] = elemVal
-			attrTypes[key] = elemVal.Type(ctx)
-		}
-		return types.ObjectValueMust(attrTypes, elements), diags
-	case []interface{}:
-		// If the list contains objects (maps), ensure they all have the same set of keys
-		// by adding null values for missing keys. This is necessary to create a list
-		// of a single object type.
-		if len(t) > 0 {
-			isListOfMaps := true
-			for _, v := range t {
-				if _, ok := v.(map[string]interface{}); !ok {
-					isListOfMaps = false
-					break
-				}
-			}
-
-			if isListOfMaps {
-				allKeys := make(map[string]struct{})
-				for _, v := range t {
-					m := v.(map[string]interface{})
-					for k := range m {
-						allKeys[k] = struct{}{}
-					}
-				}
-
-				for _, v := range t {
-					m := v.(map[string]interface{})
-					for k := range allKeys {
-						if _, exists := m[k]; !exists {
-							m[k] = nil
-						}
-					}
-				}
-			}
-		}
-
-		elements := make([]attr.Value, len(t))
-		for i, v := range t {
-			elem, d := convertToAttrValueSingle(ctx, v)
-			diags.Append(d...)
-			if diags.HasError() {
-				return nil, diags
-			}
-			elements[i] = elem
-		}
-
-		var elemType attr.Type = types.DynamicType
-		if len(elements) > 0 {
-			firstType := elements[0].Type(ctx)
-			allSameType := true
-			switch firstType.(type) {
-			case types.ObjectType:
-				// ObjectTypes are not comparable, but we assume normalization has made them consistent.
-			default:
-				for i := 1; i < len(elements); i++ {
-					if elements[i].Type(ctx) != firstType {
-						allSameType = false
-						break
-					}
-				}
-			}
-
-			if allSameType {
-				elemType = firstType
-			}
-		}
-
-		// If the final element type is dynamic, wrap all elements.
-		if elemType == types.DynamicType {
-			for i, el := range elements {
-				elements[i] = types.DynamicValue(el)
-			}
-		}
-
-		return types.ListValueMust(elemType, elements), diags
-	case string:
-		return types.DynamicValue(types.StringValue(t)), diags
-	case float64:
-		return types.DynamicValue(types.NumberValue(big.NewFloat(t))), diags
-	case int:
-		return types.DynamicValue(types.NumberValue(big.NewFloat(float64(t)))), diags
-	case bool:
-		return types.DynamicValue(types.BoolValue(t)), diags
-	case nil:
-		return types.DynamicNull(), diags
-	default:
-		diags.AddError(
-			"Unsupported value type",
-			fmt.Sprintf("Cannot convert type %T to attr.Value", v),
-		)
-		return nil, diags
-	}
-}
-
-// convertToAttrValue converts the top-level interface{} to attr.Value.
-func convertToAttrValue(ctx context.Context, v interface{}) (attr.Value, diag.Diagnostics) {
-	var diags diag.Diagnostics
-
-	switch t := v.(type) {
-	case map[string]interface{}:
-		return convertToAttrValueSingle(ctx, t)
-	default:
-		diags.AddError(
-			"Invalid top-level type",
-			fmt.Sprintf("Expected map[string]interface{} at top level, got %T", v),
-		)
-		return nil, diags
-	}
 }
