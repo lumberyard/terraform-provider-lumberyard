@@ -118,6 +118,12 @@ func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, d
 			if diags.HasError() {
 				return nil, diags
 			}
+
+			valType := elemVal.Type(ctx)
+			if valType == types.StringType || valType == types.NumberType || valType == types.BoolType {
+				elemVal = types.DynamicValue(elemVal)
+			}
+
 			elements[key] = elemVal
 			attrTypes[key] = elemVal.Type(ctx)
 		}
