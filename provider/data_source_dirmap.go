@@ -165,12 +165,12 @@ func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, d
 			elements[i] = elem
 		}
 
-		elemType := types.DynamicType
+		var elemType attr.Type = types.DynamicType
 		if len(elements) > 0 {
 			firstType := elements[0].Type(ctx)
 			allSameType := true
 			for i := 1; i < len(elements); i++ {
-				if !elements[i].Type(ctx).Equals(firstType) {
+				if elements[i].Type(ctx) != firstType {
 					allSameType = false
 					break
 				}
@@ -181,7 +181,7 @@ func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, d
 		}
 
 		// If the final element type is dynamic, wrap all elements.
-		if elemType.Equals(types.DynamicType) {
+		if elemType == types.DynamicType {
 			for i, el := range elements {
 				elements[i] = types.DynamicValue(el)
 			}
