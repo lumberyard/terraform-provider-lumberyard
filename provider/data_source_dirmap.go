@@ -118,12 +118,6 @@ func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, d
 			if diags.HasError() {
 				return nil, diags
 			}
-
-			valType := elemVal.Type(ctx)
-			if valType == types.StringType || valType == types.NumberType || valType == types.BoolType {
-				elemVal = types.DynamicValue(elemVal)
-			}
-
 			elements[key] = elemVal
 			attrTypes[key] = elemVal.Type(ctx)
 		}
@@ -201,13 +195,13 @@ func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, d
 
 		return types.ListValueMust(elemType, elements), diags
 	case string:
-		return types.StringValue(t), diags
+		return types.DynamicValue(types.StringValue(t)), diags
 	case float64:
-		return types.NumberValue(big.NewFloat(t)), diags
+		return types.DynamicValue(types.NumberValue(big.NewFloat(t))), diags
 	case int:
-		return types.NumberValue(big.NewFloat(float64(t))), diags
+		return types.DynamicValue(types.NumberValue(big.NewFloat(float64(t)))), diags
 	case bool:
-		return types.BoolValue(t), diags
+		return types.DynamicValue(types.BoolValue(t)), diags
 	case nil:
 		return types.DynamicNull(), diags
 	default:
