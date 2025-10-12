@@ -119,8 +119,8 @@ func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, d
 				return nil, diags
 			}
 
-			switch elemVal.(type) {
-			case types.StringValue, types.NumberValue, types.BoolValue:
+			valType := elemVal.Type(ctx)
+			if valType == types.StringType || valType == types.NumberType || valType == types.BoolType {
 				elemVal = types.DynamicValue(elemVal)
 			}
 
