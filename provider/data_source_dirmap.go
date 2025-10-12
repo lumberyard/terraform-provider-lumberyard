@@ -130,7 +130,7 @@ func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, d
 			if diags.HasError() {
 				return nil, diags
 			}
-			elements[i] = elemVal
+			elements[i] = types.DynamicValue(elemVal)
 		}
 		return types.ListValueMust(types.DynamicType, elements), diags
 	case string:
