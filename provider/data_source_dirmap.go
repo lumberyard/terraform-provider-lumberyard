@@ -137,6 +137,8 @@ func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, d
 		return types.StringValue(t), diags
 	case float64:
 		return types.NumberValue(big.NewFloat(t)), diags
+	case int:
+		return types.NumberValue(big.NewFloat(float64(t))), diags
 	case bool:
 		return types.BoolValue(t), diags
 	case nil:
