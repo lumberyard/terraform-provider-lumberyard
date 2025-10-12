@@ -123,16 +123,71 @@ func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, d
 		}
 		return types.ObjectValueMust(attrTypes, elements), diags
 	case []interface{}:
+		// If the list contains objects (maps), ensure they all have the same set of keys
+		// by adding null values for missing keys. This is necessary to create a list
+		// of a single object type.
+		if len(t) > 0 {
+			isListOfMaps := true
+			for _, v := range t {
+				if _, ok := v.(map[string]interface{}); !ok {
+					isListOfMaps = false
+					break
+				}
+			}
+
+			if isListOfMaps {
+				allKeys := make(map[string]struct{})
+				for _, v := range t {
+					m := v.(map[string]interface{})
+					for k := range m {
+						allKeys[k] = struct{}{}
+					}
+				}
+
+				for _, v := range t {
+					m := v.(map[string]interface{})
+					for k := range allKeys {
+						if _, exists := m[k]; !exists {
+							m[k] = nil
+						}
+					}
+				}
+			}
+		}
+
 		elements := make([]attr.Value, len(t))
-		for i, val := range t {
-			elemVal, d := convertToAttrValueSingle(ctx, val)
+		for i, v := range t {
+			elem, d := convertToAttrValueSingle(ctx, v)
 			diags.Append(d...)
 			if diags.HasError() {
 				return nil, diags
 			}
-			elements[i] = types.DynamicValue(elemVal)
+			elements[i] = elem
 		}
-		return types.ListValueMust(types.DynamicType, elements), diags
+
+		elemType := types.DynamicType
+		if len(elements) > 0 {
+			firstType := elements[0].Type(ctx)
+			allSameType := true
+			for i := 1; i < len(elements); i++ {
+				if !elements[i].Type(ctx).Equals(firstType) {
+					allSameType = false
+					break
+				}
+			}
+			if allSameType {
+				elemType = firstType
+			}
+		}
+
+		// If the final element type is dynamic, wrap all elements.
+		if elemType.Equals(types.DynamicType) {
+			for i, el := range elements {
+				elements[i] = types.DynamicValue(el)
+			}
+		}
+
+		return types.ListValueMust(elemType, elements), diags
 	case string:
 		return types.StringValue(t), diags
 	case float64:
