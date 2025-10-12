@@ -169,12 +169,18 @@ func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, d
 		if len(elements) > 0 {
 			firstType := elements[0].Type(ctx)
 			allSameType := true
-			for i := 1; i < len(elements); i++ {
-				if elements[i].Type(ctx) != firstType {
-					allSameType = false
-					break
+			switch firstType.(type) {
+			case types.ObjectType:
+				// ObjectTypes are not comparable, but we assume normalization has made them consistent.
+			default:
+				for i := 1; i < len(elements); i++ {
+					if elements[i].Type(ctx) != firstType {
+						allSameType = false
+						break
+					}
 				}
 			}
+
 			if allSameType {
 				elemType = firstType
 			}
