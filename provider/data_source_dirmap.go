@@ -111,6 +111,7 @@ func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, d
 	switch t := v.(type) {
 	case map[string]interface{}:
 		elements := make(map[string]attr.Value)
+		attrTypes := make(map[string]attr.Type)
 		for key, val := range t {
 			elemVal, d := convertToAttrValueSingle(ctx, val)
 			diags.Append(d...)
@@ -118,8 +119,9 @@ func convertToAttrValueSingle(ctx context.Context, v interface{}) (attr.Value, d
 				return nil, diags
 			}
 			elements[key] = elemVal
+			attrTypes[key] = elemVal.Type(ctx)
 		}
-		return types.MapValueMust(types.DynamicType, elements), diags
+		return types.ObjectValueMust(attrTypes, elements), diags
 	case []interface{}:
 		elements := make([]attr.Value, len(t))
 		for i, val := range t {
