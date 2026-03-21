@@ -10,8 +10,9 @@ lint:
 	golangci-lint run
 
 generate:
-	cd tools; go generate ./...
-
+	@echo "==> Generating documentation..."
+	@go generate ./...
+	@tfplugindocs generate
 fmt:
 	gofmt -s -w -e .
 

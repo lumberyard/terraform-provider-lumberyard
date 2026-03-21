@@ -1,18 +1,20 @@
-// Copyright (c) HashiCorp, Inc.
-
 package provider
 
 import (
 	"context"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 )
 
 // Ensure LumberyardProvider satisfies various provider interfaces.
-var _ provider.Provider = &LumberyardProvider{}
+var (
+	_ provider.Provider              = &LumberyardProvider{}
+	_ provider.ProviderWithFunctions = &LumberyardProvider{}
+)
 
 type LumberyardProvider struct {
 	version string
@@ -39,6 +41,13 @@ func (p *LumberyardProvider) Resources(ctx context.Context) []func() resource.Re
 func (p *LumberyardProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewDirmapDataSource,
+	}
+}
+
+// New function registration
+func (p *LumberyardProvider) Functions(ctx context.Context) []func() function.Function {
+	return []func() function.Function{
+		NewDirmapFunction,
 	}
 }
 
