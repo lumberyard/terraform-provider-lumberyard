@@ -39,9 +39,7 @@ func (f *dirmapFunction) Definition(_ context.Context, _ function.DefinitionRequ
 				Description: "Glob pattern to match filenames (e.g. \"**/*.yaml\", \"config/*.json\"). Use empty string `\"\"` to include all supported files.",
 			},
 		},
-		Return: function.StringReturn{
-			Description: "JSON-encoded string of the merged nested object. Parse it with `jsondecode()` for use as a map in Terraform.",
-		},
+		Return: function.StringReturn{},
 	}
 }
 
