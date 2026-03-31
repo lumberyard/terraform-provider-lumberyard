@@ -34,10 +34,10 @@ func (f *dirmapFunction) Definition(_ context.Context, _ function.DefinitionRequ
 				Name:        "path",
 				Description: "Absolute or relative path to the base directory to traverse. Must exist and be readable.",
 			},
-			function.StringParameter{
-				Name:        "filter",
-				Description: "Glob pattern to match filenames (e.g. \"**/*.yaml\", \"config/*.json\"). Use empty string `\"\"` to include all supported files.",
-			},
+		},
+		VariadicParameter: function.StringParameter{
+			Name:        "filter",
+			Description: "Optional glob pattern to match filenames (e.g. \"**/*.yaml\", \"config/*.json\"). If omitted, includes all supported YAML and JSON files.",
 		},
 		Return: function.StringReturn{},
 	}
@@ -48,8 +48,15 @@ func (f *dirmapFunction) Run(ctx context.Context, req function.RunRequest, resp 
 	var path string
 	var filter string
 
-	// Read arguments
-	resp.Error = function.ConcatFuncErrors(resp.Error, req.Arguments.Get(ctx, &path, &filter))
+	// Read required path argument
+	resp.Error = function.ConcatFuncErrors(resp.Error, req.Arguments.Get(ctx, &path))
+
+	// Read optional variadic filter argument
+	// If not provided, Get will return an error which we can ignore
+	if err := req.Arguments.Get(ctx, &filter); err != nil {
+		// Filter not provided, use empty string as default
+		filter = ""
+	}
 
 	// Build the map (reuses your existing logic)
 	result, err := buildMap(path, filter)
