@@ -46,18 +46,16 @@ func (f *dirmapFunction) Definition(_ context.Context, _ function.DefinitionRequ
 // Run executes the function.
 func (f *dirmapFunction) Run(ctx context.Context, req function.RunRequest, resp *function.RunResponse) {
 	var path string
-	var filterArgs []string
+	var filter string
 
 	// Read required path argument
 	resp.Error = function.ConcatFuncErrors(resp.Error, req.Arguments.Get(ctx, &path))
 
 	// Read optional variadic filter argument
-	resp.Error = function.ConcatFuncErrors(resp.Error, req.Arguments.GetVariadic(ctx, &filterArgs))
-
-	// Default filter to empty string if not provided
-	filter := ""
-	if len(filterArgs) > 0 {
-		filter = filterArgs[0]
+	// If not provided, Get will return an error which we can ignore
+	if err := req.Arguments.Get(ctx, &filter); err != nil {
+		// Filter not provided, use empty string as default
+		filter = ""
 	}
 
 	// Build the map (reuses your existing logic)
